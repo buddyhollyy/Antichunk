@@ -6,6 +6,8 @@ Antichunk is a seed map for Luanti worlds made with Mineclonia. It is a web
 page that shows the terrain of a Luanti world (v7 mapgen, default
 settings) from its seed, like Chunkbase does for Minecraft.
 
+**Live demo: [buddyhollyy.github.io/Antichunk](https://buddyhollyy.github.io/Antichunk/)**
+
 ## How to open it
 
 Open `index.html` in a web browser (double-click it). It needs no server and
