@@ -154,6 +154,9 @@
     #seed { width: 120px; } header { gap: 8px; } form button { white-space: nowrap; }
     #highlight { max-width: 140px; } #seed-info { display: none; }
     #panel { position: absolute; z-index: 2; top: 0; bottom: 0; right: 0; box-shadow: -4px 0 12px rgba(0,0,0,0.4); }
+    /* The panel covers the map's right side: keep the map buttons beside it. */
+    #body.panel-open #zoom { right: calc(min(225px, 100%) + 8px); }
+    #body.panel-open #compass { display: none; }
   }
 </style>
 </head>
