@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antichunk</title>
+<link rel="icon" href="/*@FAVICON@*/">
+<meta name="description" content="Antichunk: a seed map for Luanti worlds made with Mineclonia (v7 map generator).">
+<style>
+  :root {
+    --bg: #1b1d22; --panel: #24272e; --line: #3a3e48; --text: #eceef2;
+    --muted: #a3a9b5; --accent: #5fb36b; --accent-text: #0f1a10;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { display: grid; align-items: center; gap: 10px 18px;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  h1 { grid-area: logo; } #seed-form { grid-area: seed; } #goto-form { grid-area: goto; }
+  #view-row { grid-area: view; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+  #panel-toggle { grid-area: toggle; justify-self: end; }
+  /* Layout A: big logo on its own row, then seed + go to, then the view row. */
+  header[data-layout="a"] { grid-template-columns: auto auto 1fr;
+    grid-template-areas: "logo logo logo" "seed goto ." "view view toggle"; }
+  header[data-layout="a"] h1 { align-items: center; justify-self: center; text-align: center; }
+  header[data-layout="a"] h1 .logo svg { height: 120px; }
+  header[data-layout="a"] h1 .tagline { font-size: 15px; margin: 2px 0 4px; }
+  /* Layout B: small logo, seed and go to on one row, the view row below. */
+  header[data-layout="b"] { grid-template-columns: auto auto auto 1fr;
+    grid-template-areas: "logo seed goto ." "view view view toggle"; }
+  @media (max-width: 900px) {
+    header[data-layout] { grid-template-columns: 1fr auto;
+      grid-template-areas: "logo logo" "seed seed" "goto goto" "view toggle"; }
+  }
+  h1 { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: 0.2px; }
+  h1 { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  h1 { min-width: 0; } h1 .logo { max-width: 100%; }
+  h1 .logo svg { display: block; height: 34px; width: auto; max-width: 100%; }
+  h1 .tagline { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 2px; letter-spacing: 0; }
+  form { display: flex; gap: 6px; align-items: center; margin: 0; }
+  input { background: var(--bg); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 8px; font: inherit; }
+  #seed { width: 220px; }
+  #goto-x, #goto-z { width: 80px; }
+  button { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 6px;
+    padding: 6px 12px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.secondary { background: var(--line); color: var(--text); }
+  label { color: var(--muted); }
+  fieldset { border: 0; margin: 0; padding: 0; display: flex; gap: 12px; }
+  label.check { color: var(--text); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  fieldset label { color: var(--text); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  fieldset[hidden] { display: none; }
+  #dim { padding-right: 12px; border-right: 1px solid var(--line); }
+  #seed-info { color: var(--muted); font-size: 12px; }
+  #info { position: absolute; left: 12px; top: 12px; width: 320px; max-width: calc(100% - 80px);
+    max-height: calc(100% - 70px); overflow-y: auto; background: rgba(28,30,36,0.96);
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.45); }
+  #info[hidden] { display: none; }
+  .info-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px; }
+  .info-close { background: transparent; color: var(--muted); font-size: 20px; padding: 0 4px; line-height: 1; }
+  .info-close:hover { color: var(--text); }
+  #info dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 8px 0; }
+  #info dt { color: var(--muted); }
+  #info dd { margin: 0; font-variant-numeric: tabular-nums; }
+  #info p { margin: 6px 0; color: #cfd3da; }
+  #info code { background: var(--bg); padding: 0 4px; border-radius: 4px; font-size: 12px; color: #ff9f43; }
+  #info dd.info-pos { color: #ffd84d; }
+  .info-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
+  .info-buttons button { margin-top: 0; font-size: 12px; padding: 4px 10px; }
+  .info-about { color: var(--text) !important; }
+  #info a { color: #8ab4f8; }
+  footer a { color: #8ab4f8; }
+  .info-copy, .info-cmd, .info-tp, .info-share { margin-top: 4px; font-size: 12px; padding: 4px 10px; }
+  #body { flex: 1; min-height: 0; display: flex; position: relative; }
+  #panel { width: 225px; flex: none; overflow-y: auto; background: var(--panel);
+    border-left: 1px solid var(--line); padding: 8px 10px 12px; }
+  #panel[hidden] { display: none; }
+  .group { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .group:last-child { border-bottom: 0; }
+  label.check.head { font-weight: 600; padding: 2px 0; }
+  .types { display: flex; flex-direction: column; margin: 2px 0 0 14px; }
+  .types.off { opacity: 0.35; }
+  button.type { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+    background: transparent; color: var(--text); font-weight: 400; padding: 1px 6px;
+    border: 1px solid transparent; border-radius: 5px; }
+  button.type:hover { border-color: var(--line); }
+  button.type:focus-visible { outline: 2px solid var(--accent); }
+  button.type canvas { flex: none; }
+  button.type[aria-pressed="false"] { opacity: 0.35; }
+  button.type[aria-pressed="false"] span { text-decoration: line-through; }
+  button.type.far span { color: var(--muted); font-style: italic; }
+  button.type.far canvas { opacity: 0.4; }
+  main { position: relative; flex: 1; min-height: 0; }
+  #map { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; display: block; }
+  #map.dragging { cursor: grabbing; }
+  .overlay { position: absolute; background: rgba(20,22,26,0.82); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 10px; pointer-events: none; }
+  #readout { left: 12px; bottom: 12px; font-variant-numeric: tabular-nums; }
+  #readout:empty, #status:empty { display: none; }
+  #status { right: 12px; bottom: 12px; color: var(--muted); }
+  #topc { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); display: flex; flex-direction: column;
+    align-items: center; gap: 6px; width: max-content; max-width: min(380px, calc(100% - 120px)); pointer-events: none; }
+  #topc .overlay { position: static; }
+  #hint { color: var(--muted); text-align: center; }
+  #hint[hidden], #ruler-box[hidden] { display: none; }
+  #ruler-box { pointer-events: auto; display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+  #ruler-box button { padding: 2px 10px; font-size: 12px; }
+  select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+    padding: 5px 6px; font: inherit; }
+  #recent { width: 82px; }
+  #recent[hidden], #hl-wrap[hidden] { display: none; }
+  #highlight { max-width: 190px; }
+  .info-name { font: inherit; font-weight: 700; flex: 1; min-width: 0; }
+  #wp-list { margin: 2px 0 0 14px; }
+  .wp-row { display: flex; align-items: center; gap: 2px; }
+  .wp-row button.type { flex: 1; min-width: 0; }
+  .wp-row .wp-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; padding: 2px 0; }
+  .wp-row .wp-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wp-row small { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .wp-del { background: transparent; color: var(--muted); padding: 0 6px; font-size: 18px; line-height: 1; }
+  .wp-del:hover { color: var(--text); }
+  .info-find { display: flex; gap: 6px; margin-top: 8px; }
+  .info-find select { flex: 1; min-width: 0; font-size: 12px; }
+  .info-find button { font-size: 12px; padding: 4px 10px; white-space: nowrap; }
+  #world-settings summary { cursor: pointer; font-weight: 600; padding: 2px 0; }
+  .limit-label { display: block; margin-top: 6px; font-size: 12px; }
+  #limit-form { margin-top: 3px; } #limit { width: 0; flex: 1; min-width: 0; padding: 4px 6px; } #limit-form button { padding: 4px 10px; flex: none; }
+  #panel { overflow-x: hidden; }
+  #compass { position: absolute; right: 12px; bottom: 52px; width: 36px; height: 36px; pointer-events: none; }
+  #compass svg { display: block; }
+  #compass span { position: absolute; left: 0; right: 0; top: -15px; text-align: center; font-size: 12px; font-weight: 700;
+    color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+  button.linkish { background: none; color: #8ab4f8; padding: 0; font-weight: 400; font-size: 12px; text-decoration: underline; }
+  a.gh-link { display: inline-flex; align-items: center; gap: 6px; color: var(--text) !important; font-weight: 600; text-decoration: none; }
+  a.gh-link:hover { text-decoration: underline; }
+  .wp-empty { color: var(--muted); font-size: 12px; margin: 4px 0; }
+  #wp-list.off { opacity: 0.35; }
+  #zoom { position: absolute; right: 12px; top: 12px; display: flex; flex-direction: column; gap: 6px; }
+  #zoom button { width: 36px; height: 36px; padding: 0; font-size: 20px; }
+  #zoom button[hidden] { display: none; }
+  #zoom svg { display: block; margin: auto; }
+  #fullscreen .fs-off, .is-full #fullscreen .fs-on { display: none; }
+  #layers-btn { display: none; } .is-full #layers-btn { display: block; }
+  .is-full #fullscreen .fs-off { display: inline; }
+  #body:fullscreen { background: var(--bg); }
+  #empty[hidden] { display: none; }
+  #empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted);
+    text-align: center; padding: 16px; pointer-events: none; }
+  footer { padding: 6px 16px; font-size: 12px; color: var(--muted); background: var(--panel);
+    border-top: 1px solid var(--line); }
+  @media (max-width: 600px) {
+    #seed { width: 120px; } header { gap: 8px; } form button { white-space: nowrap; }
+    #highlight { max-width: 140px; } #seed-info { display: none; }
+    #panel { position: absolute; z-index: 2; top: 0; bottom: 0; right: 0; box-shadow: -4px 0 12px rgba(0,0,0,0.4); }
+  }
+</style>
+</head>
+<body>
+<header data-layout="/*@LAYOUT@*/">
+  <h1><span class="logo" role="img" aria-label="Antichunk">/*@LOGO@*/</span><span class="tagline">Seed map for Mineclonia</span></h1>
+  <form id="seed-form">
+    <label for="seed">Seed</label>
+    <input id="seed" autocomplete="off" placeholder="as typed when creating the world">
+    <button type="submit">Show map</button>
+    <select id="recent" class="secondary" aria-label="Recent seeds" title="Seeds you looked at before" hidden></select>
+  </form>
+  <form id="goto-form">
+    <label for="goto-x">Go to</label>
+    <input id="goto-x" placeholder="X" inputmode="numeric">
+    <input id="goto-z" placeholder="Z" inputmode="numeric">
+    <button type="submit" class="secondary">Go</button>
+  </form>
+  <div id="view-row">
+  <fieldset id="dim">
+    <label><input type="radio" name="dim" value="overworld" checked> Overworld</label>
+    <label><input type="radio" name="dim" value="nether"> Nether</label>
+    <label><input type="radio" name="dim" value="end"> End</label>
+  </fieldset>
+  <fieldset id="mode">
+    <label><input type="radio" name="mode" value="biomes"> Biomes</label>
+    <label><input type="radio" name="mode" value="terrain"> Height</label>
+  </fieldset>
+  <label id="hl-wrap">Highlight <select id="highlight" title="Darken everything except one biome"><option value="">None</option></select></label>
+  <span id="seed-info"></span>
+  </div>
+  <button type="button" id="panel-toggle" class="secondary" aria-expanded="true" aria-controls="panel">Hide layers</button>
+</header>
+<div id="body">
+<main>
+  <canvas id="map"></canvas>
+  <div id="empty">Type a seed and press “Show map”.</div>
+  <div id="zoom"><button id="zoom-in" class="secondary" title="Zoom in">+</button><button id="zoom-out" class="secondary" title="Zoom out">−</button><button id="layers-btn" class="secondary" title="Layers" aria-label="Layers" aria-controls="panel"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M10 3l7 4-7 4-7-4z"/><path d="M3 11l7 4 7-4"/></svg></button><button id="save-img" class="secondary" title="Save this view as an image" aria-label="Save this view as an image"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v9M6 8l4 4 4-4M4 15v2h12v-2"/></svg></button><button id="fullscreen" class="secondary" title="Full screen" aria-label="Full screen" hidden><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path class="fs-on" d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5"/><path class="fs-off" d="M8 3v5H3M17 8h-5V3M12 17v-5h5M3 12h5v5"/></svg></button></div>
+  <div id="compass" title="North (+Z) is up" aria-label="North is up" role="img"><svg viewBox="0 0 36 36" width="36" height="36"><circle cx="18" cy="18" r="16" fill="rgba(20,22,26,0.82)" stroke="#3a3e48"/><path d="M18 5l5 13h-10z" fill="#e5484d"/><path d="M18 31l5-13h-10z" fill="#a3a9b5"/></svg><span>N</span></div>
+  <div id="readout" class="overlay"></div>
+  <div id="status" class="overlay"></div>
+  <div id="topc"><div id="hint" class="overlay" hidden></div><div id="ruler-box" class="overlay" hidden><span class="ruler-text"></span> <button type="button" class="secondary ruler-clear">Clear</button></div></div>
+  <div id="info" hidden aria-live="polite"></div>
+</main>
+<aside id="panel" aria-label="Map layers">
+  <section class="group" id="wp-group"><label class="check head"><input type="checkbox" id="show-wp" checked> Waypoints</label><div id="wp-list"></div></section>
+  <section class="group" data-dim="overworld"><label class="check head"><input type="checkbox" id="show-spawn" checked> Spawn</label><div class="types" data-group="spawn"></div></section>
+  <section class="group" data-dim="overworld"><label class="check head"><input type="checkbox" id="show-villages" checked> Villages</label><div class="types" data-group="villages"></div></section>
+  <section class="group" data-dim="overworld"><label class="check head"><input type="checkbox" id="show-portals" checked> Ruined portals</label><div class="types" data-group="portals"></div></section>
+  <section class="group" data-dim="overworld"><label class="check head"><input type="checkbox" id="show-temples" checked> Temples</label><div class="types" data-group="temples"></div></section>
+  <section class="group" data-dim="overworld"><label class="check head"><input type="checkbox" id="show-ocean" checked> Ocean</label><div class="types" data-group="ocean"></div></section>
+  <section class="group" data-dim="overworld"><label class="check head"><input type="checkbox" id="show-land" checked> Outposts &amp; more</label><div class="types" data-group="land"></div></section>
+  <section class="group" data-dim="overworld"><label class="check head"><input type="checkbox" id="show-strong" checked> Strongholds</label><div class="types" data-group="strong"></div></section>
+  <section class="group" data-dim="overworld"><label class="check head" title="Outside swamps, slimes spawn only in these chunks, at Y -24 and below"><input type="checkbox" id="show-slime"> Slime chunks</label><div class="types" data-group="slime"></div></section>
+  <section class="group" id="world-settings"><details><summary>World settings</summary>
+    <label for="limit" class="limit-label" title="The mapgen_limit setting from the world's map_meta.txt">mapgen_limit</label>
+    <form id="limit-form"><input id="limit" type="number" min="1" max="31007" step="1" value="31007" inputmode="numeric"><button type="submit" class="secondary">Set</button></form>
+    <p class="wp-empty" id="limit-note">World edge: X and Z from -30912 to 30927.</p>
+    <p class="wp-empty">Only change this if the world was made with a smaller limit (look for mapgen_limit in the world's map_meta.txt). <button type="button" id="limit-reset" class="linkish">Reset to default</button></p>
+  </details></section>
+  <section class="group" data-dim="nether" hidden><label class="check head"><input type="checkbox" id="show-nether" checked> Nether structures</label><div class="types" data-group="nether"></div></section>
+  <section class="group" data-dim="end" hidden><label class="check head"><input type="checkbox" id="show-end" checked> End features</label><div class="types" data-group="end"></div></section>
+</aside>
+</div>
+<footer>Antichunk 0.1.22 · Luanti v7 map generator · <a href="#" id="about-link">About this map</a></footer>
+
+<script type="text/plain" id="worker-src">
+/*@NOISE@*/
+/*@V7@*/
+/*@BIOMEDATA@*/
+/*@BIOMEGEN@*/
+/*@BIOMECOLORS@*/
+/*@END@*/
+/*@VILLAGES@*/
+/*@PORTALS@*/
+/*@TEMPLES@*/
+/*@OCEAN@*/
+/*@LANDMARKS@*/
+/*@NETHER@*/
+/*@ICONJOBS@*/
+/*@WORKER@*/
+</script>
+<script>
+/*@NOISE@*/
+/*@V7@*/
+/*@BIOMEDATA@*/
+/*@BIOMEGEN@*/
+/*@VILLAGES@*/
+/*@PORTALS@*/
+/*@TEMPLES@*/
+/*@OCEAN@*/
+/*@LANDMARKS@*/
+/*@STRONGHOLDS@*/
+/*@SLIME@*/
+/*@SPAWN@*/
+/*@NETHER@*/
+/*@END@*/
+/*@ICONJOBS@*/
+</script>
+<script>
+/*@APP@*/
+</script>
+</body>
+</html>
