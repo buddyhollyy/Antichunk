@@ -1647,7 +1647,8 @@
       '<a href="https://content.luanti.org/packages/ryvnf/mineclonia/" target="_blank" rel="noopener">Mineclonia</a> is the game ' +
       '(<a href="https://codeberg.org/mineclonia/mineclonia" target="_blank" rel="noopener">source code</a>).</p>' +
       '<p><a class="gh-link" href="' + (PROJECT_URL || '#') + '"' + (PROJECT_URL ? ' target="_blank" rel="noopener"' : '') +
-      ' title="Antichunk on GitHub">' + GITHUB_MARK + 'Antichunk 0.1.22, crafted by buddyholly</a></p>';
+      ' title="Antichunk on GitHub">' + GITHUB_MARK + 'Antichunk 0.1.22, crafted by buddyholly</a></p>' +
+      '<p>Live map: <a href="https://buddyhollyy.github.io/Antichunk/" target="_blank" rel="noopener">buddyhollyy.github.io/Antichunk</a></p>';
     info.hidden = false;
     info.querySelector('.info-close').addEventListener('click', () => select(null));
   }
@@ -1833,13 +1834,48 @@
 
   // ------------------------------------------------------------ pan / zoom
   let drag = null;
+  // Two fingers on a touch screen: pinch to zoom, move to pan.  The map
+  // has fixed zoom levels, so while pinching the picture is stretched
+  // smoothly and the next level (twice or half the size) is switched to
+  // each time the fingers spread or close by a factor of 2.
+  const touches = new Map();   // pointerId -> [clientX, clientY]
+  let pinch = null, gesture = false;
+  const pinchState = () => {
+    const [a, b] = [...touches.values()];
+    const r = canvas.parentElement.getBoundingClientRect();   // not stretched, unlike the canvas
+    return { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, mx: (a[0] + b[0]) / 2 - r.left, my: (a[1] + b[1]) / 2 - r.top };
+  };
+  const setStretch = (k, ox, oy) => {
+    canvas.style.transformOrigin = ox + 'px ' + oy + 'px';
+    canvas.style.transform = k === 1 ? '' : 'scale(' + k + ')';
+  };
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId);
+    touches.set(e.pointerId, [e.clientX, e.clientY]);
+    if (touches.size === 2) {
+      drag = null; gesture = true;
+      pinch = pinchState();
+      return;
+    }
+    if (touches.size > 2) return;
     drag = { px: e.clientX, py: e.clientY, x: view.x, z: view.z };
     canvas.classList.add('dragging');
   });
   canvas.addEventListener('pointermove', (e) => {
     const r = canvas.getBoundingClientRect();
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pinch && touches.size >= 2) {
+      const now = pinchState(), s = scale();
+      view.x -= (now.mx - pinch.mx) / s;      // pan with the fingers' midpoint
+      view.z += (now.my - pinch.my) / s;
+      pinch.mx = now.mx; pinch.my = now.my;
+      let k = now.d / pinch.d;
+      if (k >= 2 && view.zi > 0) { setStretch(1, 0, 0); zoomAt(-1, now.mx, now.my); pinch.d = now.d; k = 1; }
+      else if (k <= 0.5 && view.zi < ZOOMS.length - 1) { setStretch(1, 0, 0); zoomAt(1, now.mx, now.my); pinch.d = now.d; k = 1; }
+      setStretch(Math.max(0.5, Math.min(2, k)), now.mx, now.my);
+      requestDraw();
+      return;
+    }
     mouse = [e.clientX - r.left, e.clientY - r.top];
     if (ruler && !ruler.b) { updateRuler(); requestDraw(); }
     if (drag) {
@@ -1852,8 +1888,25 @@
     }
   });
   const endDrag = () => { if (drag) { drag = null; canvas.classList.remove('dragging'); saveHash(); } };
+  // Lifting a finger ends the pinch; a part-way stretch snaps to the
+  // nearer zoom level.
+  function endPointer(e) {
+    touches.delete(e.pointerId);
+    if (pinch && touches.size < 2) {
+      const k = canvas.style.transform ? Number(canvas.style.transform.slice(6, -1)) : 1;
+      setStretch(1, 0, 0);
+      if (k > 1.41) zoomAt(-1, pinch.mx, pinch.my); else if (k < 0.71) zoomAt(1, pinch.mx, pinch.my);
+      pinch = null;
+      canvas.classList.remove('dragging');
+      saveHash(); requestDraw();
+    }
+    if (!touches.size) gesture = false;
+  }
   // A press that barely moves is a click: select the icon under it.
   canvas.addEventListener('pointerup', (e) => {
+    const wasGesture = gesture;
+    endPointer(e);
+    if (wasGesture) { drag = null; return; }
     if (drag && Math.abs(e.clientX - drag.px) < 5 && Math.abs(e.clientY - drag.py) < 5) {
       const r = canvas.getBoundingClientRect();
       const mx = e.clientX - r.left, my = e.clientY - r.top;
@@ -1868,7 +1921,7 @@
     }
     endDrag();
   });
-  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('pointercancel', (e) => { endPointer(e); endDrag(); });
   canvas.addEventListener('pointerleave', () => { mouse = null; updateReadout(); if (ruler && !ruler.b) { updateRuler(); requestDraw(); } });
 
   function zoomAt(dir, px, py) {
@@ -1906,7 +1959,9 @@
     const onFs = () => {
       const on = !!fsElement();
       fsTarget.classList.toggle('is-full', on);
-      if (on && panel.hidden) setPanel(true);   // full screen shows the layers too
+      // Full screen shows the layers too, except on narrow (portrait phone)
+      // screens, where the panel would cover most of the map.
+      if (on && panel.hidden && window.innerWidth > 600) setPanel(true);
       fsButton.title = on ? 'Leave full screen' : 'Full screen';
       fsButton.setAttribute('aria-label', fsButton.title);
       curSize = null; requestDraw();
@@ -2015,6 +2070,7 @@
   const panelToggle = document.getElementById('panel-toggle');
   function setPanel(open) {
     panel.hidden = !open;
+    document.getElementById('body').classList.toggle('panel-open', open);
     panelToggle.textContent = open ? 'Hide layers' : 'Layers';
     panelToggle.setAttribute('aria-expanded', String(open));
     try { localStorage.setItem('seedmap-panel', open ? 'open' : 'closed'); } catch (e) { /* storage blocked */ }
