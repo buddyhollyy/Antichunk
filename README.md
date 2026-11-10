@@ -1,3 +1,5 @@
+! [Antichunk] (logo/lockup.svg)
+
 # Antichunk
 
 Antichunk is a seed map for Luanti worlds made with Mineclonia. It is a web
