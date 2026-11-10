@@ -1,4 +1,4 @@
-! [Antichunk](logo/lockup.svg)
+![Antichunk] (logo/lockup.svg)
 
 # Antichunk
 
