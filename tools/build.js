@@ -42,4 +42,5 @@ for (const [name, code] of Object.entries(parts)) {
 const LAYOUT = 'a';
 fs.writeFileSync(path.join(root, 'index.html'), html.replace('/*@LAYOUT@*/', LAYOUT));
 console.log('wrote index.html (' + html.length + ' bytes)');
+fs.mkdirSync(path.join(root, 'preview'), { recursive: true });
 for (const l of ['a', 'b']) fs.writeFileSync(path.join(root, 'preview', 'header-' + l + '.html'), html.replace('/*@LAYOUT@*/', l));
