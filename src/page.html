@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Antichunk</title>
 <link rel="icon" href="/*@FAVICON@*/">
-<meta name="description" content="Antichunk: a seed map for Luanti worlds made with Mineclonia (v7 map generator).">
+<meta name="description" content="Antichunk: a seed map for Luanti worlds made with Mineclonia (v7, v5, Flat, Valleys and Carpathian map generators).">
 <style>
   :root {
     --bg: #1b1d22; --panel: #24272e; --line: #3a3e48; --text: #eceef2;
@@ -65,6 +65,11 @@
   #info dt { color: var(--muted); }
   #info dd { margin: 0; font-variant-numeric: tabular-nums; }
   #info p { margin: 6px 0; color: #cfd3da; }
+  #info h4 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+  #info ul { margin: 4px 0; padding-left: 18px; color: #cfd3da; } #info li { margin: 3px 0; }
+  #info ul.about-built { list-style: none; padding-left: 0; }
+  #info .about-rule { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+  #info .about-foot { line-height: 1.7; }
   #info code { background: var(--bg); padding: 0 4px; border-radius: 4px; font-size: 12px; color: #ff9f43; }
   #info dd.info-pos { color: #ffd84d; }
   .info-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
@@ -110,6 +115,7 @@
   select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
     padding: 5px 6px; font: inherit; }
   #recent { width: 82px; }
+  #mapgen-wrap { display: flex; align-items: center; gap: 6px; }
   #recent[hidden], #hl-wrap[hidden] { display: none; }
   #highlight { max-width: 190px; }
   .info-name { font: inherit; font-weight: 700; flex: 1; min-width: 0; }
@@ -151,7 +157,8 @@
   footer { padding: 6px 16px; font-size: 12px; color: var(--muted); background: var(--panel);
     border-top: 1px solid var(--line); }
   @media (max-width: 600px) {
-    #seed { width: 120px; } header { gap: 8px; } form button { white-space: nowrap; }
+    #seed { width: 120px; flex: 1 1 120px; min-width: 0; } header { gap: 8px; } form button { white-space: nowrap; }
+    #seed-form { flex-wrap: wrap; } #mapgen { max-width: 150px; }
     #highlight { max-width: 140px; } #seed-info { display: none; }
     #panel { position: absolute; z-index: 2; top: 0; bottom: 0; right: 0; box-shadow: -4px 0 12px rgba(0,0,0,0.4); }
     /* The panel covers the map's right side: keep the map buttons beside it. */
@@ -166,6 +173,18 @@
   <form id="seed-form">
     <label for="seed">Seed</label>
     <input id="seed" autocomplete="off" placeholder="as typed when creating the world">
+    <span id="mapgen-wrap"><label for="mapgen">Mapgen</label>
+    <select id="mapgen" class="secondary" title="The map generator the world was made with (mg_name in the world's map_meta.txt)">
+      <option value="v7">v7</option>
+      <option value="v5">v5</option>
+      <option value="flat">Flat</option>
+      <option value="flat:lakes">Flat + lakes</option>
+      <option value="flat:hills">Flat + hills</option>
+      <option value="flat:lakes,hills">Flat + lakes + hills</option>
+      <option value="valleys">Valleys</option>
+      <option value="carpathian">Carpathian</option>
+      <option value="carpathian:rivers">Carpathian + rivers</option>
+    </select></span>
     <button type="submit">Show map</button>
     <select id="recent" class="secondary" aria-label="Recent seeds" title="Seeds you looked at before" hidden></select>
   </form>
@@ -212,6 +231,14 @@
   <section class="group" data-dim="overworld"><label class="check head"><input type="checkbox" id="show-strong" checked> Strongholds</label><div class="types" data-group="strong"></div></section>
   <section class="group" data-dim="overworld"><label class="check head" title="Outside swamps, slimes spawn only in these chunks, at Y -24 and below"><input type="checkbox" id="show-slime"> Slime chunks</label><div class="types" data-group="slime"></div></section>
   <section class="group" id="world-settings"><details><summary>World settings</summary>
+    <div id="valleys-opts" hidden>
+      <p class="limit-label" title="The mgvalleys_spflags setting from the world's map_meta.txt">Valleys options</p>
+      <label class="check"><input type="checkbox" data-flag="altitude_chill" checked> Altitude chill</label>
+      <label class="check"><input type="checkbox" data-flag="altitude_dry" checked> Altitude dry</label>
+      <label class="check"><input type="checkbox" data-flag="humid_rivers" checked> Humid rivers</label>
+      <label class="check"><input type="checkbox" data-flag="vary_river_depth" checked> Vary river depth</label>
+      <p class="wp-empty">Tick the options the world was made with. All four are on unless they were turned off when the world was created.</p>
+    </div>
     <label for="limit" class="limit-label" title="The mapgen_limit setting from the world's map_meta.txt">mapgen_limit</label>
     <form id="limit-form"><input id="limit" type="number" min="1" max="31007" step="1" value="31007" inputmode="numeric"><button type="submit" class="secondary">Set</button></form>
     <p class="wp-empty" id="limit-note">World edge: X and Z from -30912 to 30927.</p>
@@ -221,13 +248,17 @@
   <section class="group" data-dim="end" hidden><label class="check head"><input type="checkbox" id="show-end" checked> End features</label><div class="types" data-group="end"></div></section>
 </aside>
 </div>
-<footer><a href="https://github.com/buddyhollyy/Antichunk" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline;">Antichunk 0.1.22</a> · Luanti v7 map generator · <a href="#" id="about-link">About this map</a></footer>
+<footer><a href="https://github.com/buddyhollyy/Antichunk" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline;">Antichunk 0.1.27</a> · Luanti v7, v5, Flat, Valleys and Carpathian map generators · <a href="#" id="about-link">About this map</a></footer>
 
 <script type="text/plain" id="worker-src">
 /*@NOISE@*/
 /*@V7@*/
+/*@V5@*/
+/*@FLAT@*/
+/*@CARPATHIAN@*/
 /*@BIOMEDATA@*/
 /*@BIOMEGEN@*/
+/*@VALLEYS@*/
 /*@BIOMECOLORS@*/
 /*@END@*/
 /*@VILLAGES@*/
@@ -237,13 +268,18 @@
 /*@LANDMARKS@*/
 /*@NETHER@*/
 /*@ICONJOBS@*/
+/*@SPAWN@*/
 /*@WORKER@*/
 </script>
 <script>
 /*@NOISE@*/
 /*@V7@*/
+/*@V5@*/
+/*@FLAT@*/
+/*@CARPATHIAN@*/
 /*@BIOMEDATA@*/
 /*@BIOMEGEN@*/
+/*@VALLEYS@*/
 /*@VILLAGES@*/
 /*@PORTALS@*/
 /*@TEMPLES@*/

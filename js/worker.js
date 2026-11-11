@@ -1,5 +1,6 @@
 // Web worker: computes one map tile (one 80x80 mapchunk) and colors it.
-// Expects LuantiNoise and LuantiV7 to be loaded in the same worker first.
+// Expects LuantiNoise and the map generator scripts (LuantiV7, LuantiV5, LuantiFlat,
+// LuantiValleys, LuantiCarpathian) to be loaded in the same worker first.
 (function () {
   'use strict';
   const V7 = self.LuantiV7;
@@ -88,10 +89,16 @@
     return { m, rgba, rgbaB: rgba, surface, water: new Uint8Array(m * m), biome };
   }
 
-  function overworldTile(seed, cx, cz, step) {
-    const r = V7.generateChunkTop(seed, cx, cz, step);
+  function overworldTile(seed, cx, cz, step, mapgen) {
+    const LF = self.LuantiFlat, LV = self.LuantiValleys, LC = self.LuantiCarpathian;
+    const r = mapgen && mapgen.startsWith('flat') ? LF.generateChunkTop(seed, cx, cz, step, LF.parseFlags(mapgen))
+      : mapgen && mapgen.startsWith('carpathian') ? LC.generateChunkTop(seed, cx, cz, step, LC.parseFlags(mapgen))
+      : mapgen === 'v5' ? self.LuantiV5.generateChunkTop(seed, cx, cz, step)
+      : mapgen && mapgen.startsWith('valleys') ? LV.generateChunkTop(seed, cx, cz, step, LV.parseFlags(mapgen))
+      : V7.generateChunkTop(seed, cx, cz, step);
     const m = r.size, H = r.surface;
-    const biome = BG.chunkBiomes(seed, cx, cz, step, H);
+    // Valleys changes heat and humidity per column, so it picks its own biomes.
+    const biome = r.heat ? LV.chunkBiomes(r, cx, cz) : BG.chunkBiomes(seed, cx, cz, step, H);
     const rgba = new Uint8ClampedArray(m * m * 4);   // terrain view
     const rgbaB = new Uint8ClampedArray(m * m * 4);  // biome view
     for (let kk = 0; kk < m; kk++) for (let ii = 0; ii < m; ii++) {
@@ -131,17 +138,23 @@
   let finders = null;
   function iconBatch(d) {
     const IJ = self.MclIconJobs;
-    if (!finders || finders.seed !== d.seedText) { finders = new IJ.Finders(d.seedText); finders.seed = d.seedText; }
+    const fkey = d.seedText + '|' + d.mapgen;
+    if (!finders || finders.key !== fkey) { finders = new IJ.Finders(d.seedText, d.mapgen); finders.key = fkey; }
     const out = d.icons.map(([id, job]) => [id, IJ.plain(finders.run(job))]);
     self.postMessage({ icons: out, gen: d.gen });
   }
 
   self.onmessage = function (e) {
     if (e.data.icons) { iconBatch(e.data); return; }
+    if (e.data.spawn) {
+      const r = new self.LuantiSpawn.Spawn(e.data.seed, e.data.mapgen).find(e.data.trials);
+      self.postMessage({ spawn: { nearest: r.nearest, reach: r.reach, hits: r.hits }, gen: e.data.gen });
+      return;
+    }
     const { id, seed, cx, cz, step } = e.data;
     const g = e.data.g || 1;
     const one = (x, z) => (e.data.nether ? netherTile(seed, x, z, step)
-      : e.data.end ? endTile(e.data.seed64, x, z, step) : overworldTile(seed, x, z, step));
+      : e.data.end ? endTile(e.data.seed64, x, z, step) : overworldTile(seed, x, z, step, e.data.mapgen));
     let out;
     if (g === 1) out = one(cx, cz);
     else {

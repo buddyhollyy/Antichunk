@@ -4,8 +4,9 @@
 
 Antichunk is a seed map for [Luanti](https://www.luanti.org/) worlds made 
 with [Mineclonia](https://content.luanti.org/packages/ryvnf/mineclonia/). 
-It is a webpage that shows the terrain of a Luanti world (v7 mapgen, default
-settings) from its seed, like Chunkbase does for Minecraft.
+It is a webpage that shows the terrain of a Luanti world (v7, v5, Flat,
+Valleys or Carpathian mapgen, default settings) from its seed, like Chunkbase does for
+Minecraft.
 
 **Live demo: [buddyhollyy.github.io/Antichunk](https://buddyhollyy.github.io/Antichunk/)**
 
@@ -13,7 +14,12 @@ settings) from its seed, like Chunkbase does for Minecraft.
 
 Open `index.html` in a web browser (double-click it). It needs no server and
 no internet connection. Type the seed exactly as it was typed when the world
-was created, then press "Show map". You can find the seed in game by pressing
+was created, pick the map generator the world uses under "Mapgen" (v7, v5, Flat
+with the Lakes and Hills options it was made with, Valleys, or Carpathian
+with or without Rivers), then press "Show map".
+Valleys has four options of its own (Altitude chill, Altitude dry, Humid
+rivers, Vary river depth; all on by default) under "World settings" at the
+bottom of the layers panel. You can find the seed in game by pressing
 'F5' on the keyboard. Drag to move, use the mouse wheel or the + / − buttons to 
 zoom (or pinch zoom on touch screens). The address bar keeps the seed and
 position, so a bookmark brings you back to the same view.
@@ -31,11 +37,12 @@ exactly, and so did the biome (the biome check used a copy of Luanti's
 biome-choice function with the real noise and random-number code).
 
 Known limits:
-- It assumes default v7 settings (`mgv7_spflags` = mountains, ridges,
-  no floatlands; `water_level` = 1; `chunksize` = 5).
+- It assumes default world settings, apart from the options you can pick on
+  the page (Flat's Lakes and Hills, Valleys' four options, Carpathian's
+  Rivers). Mineclonia's "classic superflat" is not supported.
 - Caves are not modeled. A cave that opens at the surface will not show.
-- It matches x86-64 builds of Luanti. A build that uses fused multiply-add
-  (some ARM builds) could round differently in rare cases.
+- It matches x86-64 builds of Luanti. Some ARM builds could round
+  differently in rare cases.
 
 ## License
 
@@ -52,7 +59,7 @@ index.html is built from the files in src/ and js/ by running node tools/build.j
 The name is a nod to [Chunkbase](https://www.chunkbase.com/apps/seed-map), the seed
 map for Minecraft. Minecraft and Luanti cut their worlds into pieces in different ways:
 
-#### Lunanti: 
+#### Luanti: 
 * Luanti node: one 1 × 1 × 1 cube, the smallest piece of a Luanti world.
 * Luanti mapblock: a cube of 16 × 16 × 16 nodes. This is how the world is stored. Seen from above it has the same footprint as a Minecraft chunk, but it is only 16 nodes tall, so mapblocks stack on top of each other.
 * Luanti mapchunk: 5 × 5 × 5 mapblocks, so 80 × 80 × 80 nodes. The map generator builds the world one mapchunk at a time.

@@ -33,6 +33,7 @@
   }
   const view = { x: 0, z: 0, zi: 3 };              // center and zoom index
   let seedText = '', seed32 = 0, seed64 = '0', generation = 0;
+  let mapgen = 'v7';                                // 'v7', 'v5', 'flat[:lakes,hills]', 'valleys[:flags]' or 'carpathian[:rivers]'
   let mouse = null;                                 // last pointer pos (css px)
   let mode = 'biomes';                              // 'biomes' or 'terrain'
   let dim = 'overworld';                            // 'overworld' or 'nether'
@@ -108,7 +109,7 @@
   const STORE_VERSION = '/*@BUILDHASH@*/';
   const STORE_CAP = 100e6, STORE_LOW = 85e6;
   const store = { db: null, keys: new Set(), total: 0, reading: 0, evicting: false, iconReads: [] };
-  const storePrefix = () => STORE_VERSION + '|' + seed64 + '|';
+  const storePrefix = () => STORE_VERSION + '|' + seed64 + '|' + (mapgen === 'v7' ? '' : mapgen + '|');
   async function gzip(u8, compress) {
     const cs = compress ? new CompressionStream('gzip') : new DecompressionStream('gzip');
     return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(cs)).arrayBuffer());
@@ -272,14 +273,14 @@
         const batch = findQueue.splice(0, 6);
         for (const j of batch) { findQueued.delete(j.id); iconSent.set(j.id, j.job); }
         wk.busy = true; wk.icons = true;
-        wk.postMessage({ icons: batch.map((j) => [j.id, j.job]), seedText, gen: iconGen });
+        wk.postMessage({ icons: batch.map((j) => [j.id, j.job]), seedText, mapgen, gen: iconGen });
         continue;
       }
       if (iconQueue.length && (iconWorkers() < Math.ceil(nWorkers / 2) || !queue.length)) {
         const batch = iconQueue.splice(0, 24);
         for (const j of batch) { iconQueued.delete(j.id); iconSent.set(j.id, j.job); }
         wk.busy = true; wk.icons = true;
-        wk.postMessage({ icons: batch.map((j) => [j.id, j.job]), seedText, gen: iconGen });
+        wk.postMessage({ icons: batch.map((j) => [j.id, j.job]), seedText, mapgen, gen: iconGen });
         continue;
       }
       let k = queue.shift();
@@ -297,7 +298,7 @@
       wk.busy = true;
       inFlight.set(k, wk);
       wk.postMessage({ id: generation + '|' + k, seed: seed32, cx: +cx, cz: +cz, step: +step, g: tileChunks(+step),
-        nether: d === 'n', end: d === 'e', seed64 });
+        nether: d === 'n', end: d === 'e', seed64, mapgen });
     }
     updateStatus();
   }
@@ -366,8 +367,10 @@
   function updateStatus() {
     let pending = queue.length + inFlight.size;
     for (const k of aheadInFlight) if (inFlight.has(k)) pending--;
-    status.textContent = pending ? 'Loading ' + pending + ' map tile' + (pending === 1 ? '' : 's') +
-      ' on ' + nWorkers + ' threads…' : '';
+    const parts = [];
+    if (pending) parts.push('Loading ' + pending + ' map tile' + (pending === 1 ? '' : 's') + ' on ' + nWorkers + ' threads…');
+    if (seedText && showSpawn && !spawnInfo && dim === 'overworld') parts.push('Finding the spawn point…');
+    status.textContent = parts.join(' ');
   }
 
   // ------------------------------------------------------------ geometry
@@ -1253,19 +1256,29 @@
   // ------------------------------------------------------------ spawn
   // Luanti's spawn search (see spawn.js): a star on the suitable spot
   // nearest 0,0 and a dashed square for the area new players land in.
-  let showSpawn = true, spawnInfo = null, spawnScreen = null, spawnTimer = 0;
+  let showSpawn = true, spawnInfo = null, spawnScreen = null, spawnTimer = 0, spawnWorker = null;
 
   function findSpawnLater() {
     clearTimeout(spawnTimer);
     spawnInfo = null;
     const gen = generation;
+    // The search can take a few seconds (Valleys often has no suitable spot
+    // near 0,0), so it runs on a thread of its own to keep the page responsive.
     spawnTimer = setTimeout(() => {
       if (gen !== generation) return;
-      const r = new window.LuantiSpawn.Spawn(seed32).find(300);
-      // Square holding 95% of the simulated spawns.
-      const d = r.hits.map(([x, z]) => Math.max(Math.abs(x), Math.abs(z))).sort((a, b) => a - b);
-      spawnInfo = { nearest: r.nearest, reach: d.length ? d[Math.floor(d.length * 0.95)] : 0 };
-      requestDraw();
+      if (!spawnWorker) {
+        spawnWorker = new Worker(workerUrl);
+        spawnWorker.onmessage = (e) => {
+          if (e.data.gen !== generation) return;
+          const r = e.data.spawn;
+          // Square holding 95% of the simulated spawns.
+          const d = r.hits.map(([x, z]) => Math.max(Math.abs(x), Math.abs(z))).sort((a, b) => a - b);
+          spawnInfo = { nearest: r.nearest, reach: d.length ? d[Math.floor(d.length * 0.95)] : 0 };
+          updateStatus();
+          requestDraw();
+        };
+      }
+      spawnWorker.postMessage({ spawn: true, seed: seed32, mapgen, trials: 300, gen });
     }, 50);
   }
 
@@ -1454,12 +1467,26 @@
       }
     } else if (sel.group === 'spawn') {
       title = 'Spawn point';
-      facts.push(['Nearest suitable spot', 'X ' + v.x + ', Y ' + v.y + ', Z ' + v.z]);
+      facts.push([v.fromRuns ? 'Closest spot found' : 'Nearest suitable spot', 'X ' + v.x + ', Y ' + v.y + ', Z ' + v.z]);
       facts.push(['Spawn area (dashed square)', 'within ' + spawnInfo.reach + ' blocks of 0,0']);
-      notes.push('In v7 worlds Mineclonia lets Luanti choose where new players appear. Luanti tries random spots in a square ' +
-        'around 0,0 that grows a little with each try, and uses the first spot that is dry land, not in a river and no higher than Y 17.');
+      notes.push(mapgen === 'v7'
+        ? 'In v7 worlds Mineclonia lets Luanti choose where new players appear. Luanti tries random spots in a square ' +
+          'around 0,0 that grows a little with each try, and uses the first spot that is dry land, not in a river and no higher than Y 17.'
+        : mapgen.startsWith('carpathian')
+        ? 'In Carpathian worlds Mineclonia lets Luanti choose where new players appear. Luanti tries random spots in a square ' +
+          'around 0,0 that grows a little with each try, and uses the first spot whose ground is above water and no higher than Y 30' +
+          (mapgen.includes('rivers') ? ' that is not in a river.' : '.')
+        : mapgen === 'v5'
+        ? 'In v5 worlds Mineclonia lets Luanti choose where new players appear. Luanti tries random spots in a square ' +
+          'around 0,0 that grows a little with each try, and uses the first spot that is dry land no higher than Y 17.'
+        : mapgen.startsWith('valleys')
+        ? 'In Valleys worlds Mineclonia lets Luanti choose where new players appear. Luanti tries random spots in a square ' +
+          'around 0,0 that grows a little with each try, and uses the first spot that is dry land, not in a river and no higher than Y 17.'
+        : 'In Flat worlds Mineclonia lets Luanti choose where new players appear. Luanti tries random spots in a square ' +
+          'around 0,0 that grows a little with each try, and uses the first spot that is not under water.');
       notes.push('Those random numbers are not tied to the seed, so each new player can appear somewhere different. ' +
-        'The star is the suitable spot nearest 0,0. The dashed square holds about 95% of 300 test runs of Luanti\'s search: ' +
+        (v.fromRuns ? 'No suitable spot lies within ' + window.LuantiSpawn.RINGS + ' blocks of 0,0, so the star is the closest spot the test runs found. '
+          : 'The star is the suitable spot nearest 0,0. ') + 'The dashed square holds about 95% of 300 test runs of Luanti\'s search: ' +
         'new players almost always appear inside it.');
       notes.push('A server can also set a fixed spawn with the <code>static_spawnpoint</code> setting, which this map cannot know about.');
     } else if (sel.group === 'village') {
@@ -1512,7 +1539,7 @@
       }
       facts.push(['Biome', NETHER_LABEL[Object.keys(window.MclNether.TARGET).find((k) => window.MclNether.TARGET[k] === v.biome)] || v.biome]);
       if (v.kind === 'nether_portal') {
-        notes.push(exact, 'Y is exact too: in v7 worlds Mineclonia treats the whole Nether as solid rock when it places these, ' +
+        notes.push(exact, 'Y is exact too: outside singlenode worlds Mineclonia treats the whole Nether as solid rock when it places these, ' +
           'so the portal sits at the height its random numbers pick. It can end up inside netherrack or out in a cave.');
       } else if (v.kind === 'fortress') {
         notes.push(startNote('chunk the fortress starts in', 112) + ' The whole fortress is then moved up or down so it sits between the heights shown.');
@@ -1607,6 +1634,7 @@
     if (dim !== 'overworld') p.set('dim', dim);
     if (waypoints.length) p.set('wp', waypointsParam());
     if (mapgenLimit !== 31007) p.set('limit', mapgenLimit);
+    if (mapgen !== 'v7') p.set('mapgen', mapgen);
     return location.href.split('#')[0] + '#' + p.toString();
   }
   // From a shared link: select the item once its layer has been worked out.
@@ -1631,24 +1659,45 @@
   // The details that used to fill the footer, shown in the info card.
   function showAbout() {
     selected = null; requestDraw();
+    const ext = (href, text) => '<a href="' + href + '" target="_blank" rel="noopener">' + text + '</a>';
     info.innerHTML = '<div class="info-head"><strong>About Antichunk</strong>' +
       '<button type="button" class="info-close" aria-label="Close">×</button></div>' +
-      '<p>A seed map for Luanti worlds made with Mineclonia, using the v7 map generator with default settings. ' +
-      'It was built from Luanti 5.19 (development version of November 9, 2026) and Mineclonia as of November 4, 2026.</p>' +
-      '<p>Biomes come from Mineclonia\'s biome list. Villages, ruined portals, temples (desert pyramids, jungle temples, igloos, ' +
+      '<p>A seed map for Luanti worlds made with Mineclonia. Type a world\'s seed to see its terrain, biomes and ' +
+      'structures without opening the game.</p>' +
+
+      '<h4>Setting up your world</h4>' +
+      '<ul>' +
+      '<li>Under <b>Mapgen</b>, pick the map generator the world uses: v7, v5, Flat, Valleys or Carpathian.</li>' +
+      '<li>For Flat and Carpathian, pick the options the world was made with (Lakes, Hills, Rivers).</li>' +
+      '<li>Valleys\' four options are under "World settings" at the bottom of the layers panel.</li>' +
+      '<li>If the world was made with a smaller <code>mapgen_limit</code>, it ends sooner. Set it under "World settings" too.</li>' +
+      '<li>All other world settings are assumed to be the defaults.</li>' +
+      '</ul>' +
+
+      '<h4>What the map shows</h4>' +
+      '<ul>' +
+      '<li>Biomes, from Mineclonia\'s biome list.</li>' +
+      '<li>Villages (a red outline marks an abandoned one), ruined portals, temples (desert pyramids, jungle temples, igloos, ' +
       'swamp huts), ocean structures (shipwrecks, ocean ruins, monuments), woodland mansions, pillager outposts, trail ruins, ' +
-      'trial chambers, buried treasure, mineshafts and strongholds are placed the way Mineclonia places them. A red outline ' +
-      'marks an abandoned village.</p>' +
-      '<p>The dashed square around the spawn star is where new players can appear. Caves are not shown.</p>' +
+      'trial chambers, buried treasure, mineshafts and strongholds, placed the way Mineclonia places them.</li>' +
+      '<li>The spawn point: new players appear inside the dashed square around the star.</li>' +
+      '<li>Caves are not shown.</li>' +
+      '</ul>' +
+
+      '<h4>Using the map</h4>' +
       '<p>Click any icon to see what it is and how to find it in game, or any other spot for its details and tools.</p>' +
-      '<p>A world made with a smaller <code>mapgen_limit</code> setting ends sooner: set it under "World settings" at the bottom of the layers panel.</p>' +
-      '<p>Antichunk is free software under the GPL-3.0 license, because it uses data from Mineclonia.</p>' +
-      '<p><a href="https://www.luanti.org/" target="_blank" rel="noopener">Luanti</a> is the free voxel game engine.<br>' +
-      '<a href="https://content.luanti.org/packages/ryvnf/mineclonia/" target="_blank" rel="noopener">Mineclonia</a> is the game ' +
-      '(<a href="https://codeberg.org/mineclonia/mineclonia" target="_blank" rel="noopener">source code</a>).</p>' +
-      '<p><a class="gh-link" href="' + (PROJECT_URL || '#') + '"' + (PROJECT_URL ? ' target="_blank" rel="noopener"' : '') +
-      ' title="Antichunk on GitHub">' + GITHUB_MARK + 'Antichunk 0.1.22, crafted by buddyholly</a></p>' +
-      '<p>Live map: <a href="https://buddyhollyy.github.io/Antichunk/" target="_blank" rel="noopener">buddyhollyy.github.io/Antichunk</a></p>';
+
+      '<h4>Built from</h4>' +
+      '<ul class="about-built">' +
+      '<li>' + ext('https://www.luanti.org/', 'Luanti') + ', the free voxel game engine (5.19 development version, November 9, 2026)</li>' +
+      '<li>' + ext('https://content.luanti.org/packages/ryvnf/mineclonia/', 'Mineclonia') + ', the game (development version after 0.124.1, ' +
+      'November 10, 2026; ' + ext('https://codeberg.org/mineclonia/mineclonia', 'source code') + ')</li>' +
+      '</ul>' +
+
+      '<p class="about-foot about-rule"><a class="gh-link" href="' + (PROJECT_URL || '#') + '"' + (PROJECT_URL ? ' target="_blank" rel="noopener"' : '') +
+      ' title="Antichunk on GitHub">' + GITHUB_MARK + 'Antichunk 0.1.27, crafted by buddyholly</a><br>' +
+      'Antichunk is free software under the GPL-3.0 license.<br>' +
+      'Live map: ' + ext('https://buddyhollyy.github.io/Antichunk/', 'buddyhollyy.github.io/Antichunk') + '</p>';
     info.hidden = false;
     info.querySelector('.info-close').addEventListener('click', () => select(null));
   }
@@ -1788,8 +1837,8 @@
     if (text === '') { seedInfo.textContent = ''; waypoints = []; renderWaypoints(); requestDraw(); return; }
     const s64 = N.readSeed(text);
     seed32 = N.mapgenSeed(s64);
-    world = new window.MclVillages.World(text);
-    mainFinders = new window.MclIconJobs.Finders(text);
+    world = new window.MclVillages.World(text, mapgen);
+    mainFinders = new window.MclIconJobs.Finders(text, mapgen);
     stopFind();
     iconGen++; iconQueue = []; iconQueued.clear(); iconSent.clear();
     villageCache.clear();
@@ -1817,6 +1866,7 @@
       applyLimit(l === undefined ? 31007 : l);
     }
     limitFromHash = false;
+    rememberMapgen();
     seedInfo.textContent = 'World seed ' + s64.toString();
     saveHash();
     requestDraw();
@@ -1825,6 +1875,53 @@
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     setSeed(seedInput.value);
+  });
+
+  // ------------------------------------------------------------ map generator
+  // The map generator the world was made with ("mg_name" in the world's
+  // map_meta.txt; for Flat also "mgflat_spflags").  Remembered per seed in
+  // this browser and carried in links.
+  const MAPGEN_KEY = 'antichunk-mapgens';
+  const mapgenSel = document.getElementById('mapgen');
+  const LV = window.LuantiValleys;
+  const valleysOpts = document.getElementById('valleys-opts');
+  const valleysBoxes = [...valleysOpts.querySelectorAll('input[data-flag]')];
+  function applyMapgen(m) {
+    m = String(m || 'v7');
+    if (m.startsWith('valleys')) m = LV.specOf(LV.parseFlags(m));
+    else if (![...mapgenSel.options].some((o) => o.value === m)) m = 'v7';
+    mapgen = m;
+    mapgenSel.value = m.startsWith('valleys') ? 'valleys' : m;
+    valleysOpts.hidden = !m.startsWith('valleys');
+    if (m.startsWith('valleys')) {
+      const f = LV.parseFlags(m);
+      for (const b of valleysBoxes) b.checked = f[b.dataset.flag];
+    }
+  }
+  for (const b of valleysBoxes) {
+    b.addEventListener('change', () => {
+      const f = {};
+      for (const c of valleysBoxes) f[c.dataset.flag] = c.checked;
+      applyMapgen(LV.specOf(f));
+      if (seedText) { limitFromHash = true; setSeed(seedText); }
+    });
+  }
+  function savedMapgen(text) {
+    try { return JSON.parse(localStorage.getItem(MAPGEN_KEY) || '{}')[N.readSeed(text).toString()]; }
+    catch (e) { return undefined; } /* storage blocked */
+  }
+  function rememberMapgen() {
+    try {
+      const all = JSON.parse(localStorage.getItem(MAPGEN_KEY) || '{}');
+      if (mapgen === 'v7') delete all[seed64]; else all[seed64] = mapgen;
+      localStorage.setItem(MAPGEN_KEY, JSON.stringify(all));
+    } catch (e) { /* storage blocked */ }
+  }
+  mapgenSel.addEventListener('change', () => {
+    applyMapgen(mapgenSel.value);
+    // Valleys has options of its own: show them.
+    if (mapgen.startsWith('valleys')) document.querySelector('#world-settings details').open = true;
+    if (seedText) { limitFromHash = true; setSeed(seedText); }
   });
   gotoForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -2679,6 +2776,7 @@
     recentSel.value = '';
     if (t === undefined) return;
     seedInput.value = t;
+    applyMapgen(savedMapgen(t) || 'v7');
     setSeed(t);
   });
 
@@ -2692,6 +2790,7 @@
     if (hlKey) p.set('hl', hlKey);
     if (showSlime) p.set('slime', '1');
     if (mapgenLimit !== 31007) p.set('limit', mapgenLimit);
+    if (mapgen !== 'v7') p.set('mapgen', mapgen);
     history.replaceState(null, '', '#' + p.toString());
   }
   function loadHash() {
@@ -2711,6 +2810,7 @@
     if (p.has('hl')) { hlKey = p.get('hl'); fillHighlight(); }
     if (p.has('limit')) { applyLimit(Number(p.get('limit'))); limitFromHash = true; }
     if (p.get('slime') === '1') { showSlime = true; document.getElementById('show-slime').checked = true; }
+    if (p.has('seed')) applyMapgen(p.get('mapgen') || 'v7');
     if (p.has('seed')) { seedInput.value = p.get('seed'); setSeed(p.get('seed')); }
     if (p.has('wp') && p.has('seed')) importWaypoints(p.get('wp'));
     const sel = (p.get('sel') || '').split(',');

@@ -4,8 +4,8 @@
 // page works out the slower extras (like centerY) itself when asked.
 (function (root) {
   'use strict';
-  function Finders(seedText) {
-    const world = new root.MclVillages.World(seedText);
+  function Finders(seedText, mapgen) {
+    const world = new root.MclVillages.World(seedText, mapgen);
     this.world = world;
     this.portals = new root.MclPortals.Portals(world);
     this.temples = new root.MclTemples.Temples(world);

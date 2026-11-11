@@ -10,6 +10,10 @@ let html = read('src/page.html');
 const parts = {
   NOISE: read('js/noise.js'),
   V7: read('js/v7.js'),
+  FLAT: read('js/flat.js'),
+  V5: read('js/v5.js'),
+  VALLEYS: read('js/valleys.js'),
+  CARPATHIAN: read('js/carpathian.js'),
   WORKER: read('js/worker.js'),
   APP: read('js/app.js'),
   BIOMEDATA: read('js/biomes-data.js'),
@@ -32,7 +36,7 @@ const parts = {
 // Fingerprint of the code that decides what the map shows; saved tiles in
 // the browser are only reused by a page with the same fingerprint.
 parts.BUILDHASH = require('crypto').createHash('sha256').update(
-  ['noise', 'v7', 'biomes-data', 'biomegen', 'biome-colors', 'worker', 'end', 'nether', 'villages', 'portals',
+  ['noise', 'v7', 'v5', 'flat', 'valleys', 'carpathian', 'biomes-data', 'biomegen', 'biome-colors', 'worker', 'end', 'nether', 'villages', 'portals',
     'temples', 'ocean', 'landmarks', 'strongholds', 'iconjobs'].map((f) => read('js/' + f + '.js')).join('\n')).digest('hex').slice(0, 12);
 for (const [name, code] of Object.entries(parts)) {
   if (code.includes('</script')) throw new Error(name + ' contains </script');

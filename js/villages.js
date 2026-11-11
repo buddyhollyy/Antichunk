@@ -251,10 +251,22 @@
       biome: BG.BIOMES[bi].name, height: h };
   }
 
-  function World(seedText) {
+  // mapgen: 'v7' (default), a Flat spec such as 'flat:lakes,hills' or a
+  // Valleys spec such as 'valleys' or 'valleys:altitude_chill', or
+  // 'carpathian' / 'carpathian:rivers', or 'v5'.
+  // Only Mineclonia's height model differs between map generators.
+  function World(seedText, mapgen) {
     this.levelSeed = N.readSeed(seedText);
     this.seed32 = N.mapgenSeed(this.levelSeed);
-    this.model = new Model(this.seed32);
+    this.mapgen = mapgen || 'v7';
+    const F = isNode ? require('./flat.js') : root.LuantiFlat;
+    const VL = isNode ? require('./valleys.js') : root.LuantiValleys;
+    const CP = isNode ? require('./carpathian.js') : root.LuantiCarpathian;
+    this.model = this.mapgen.startsWith('flat') ? new F.Model(this.seed32, F.parseFlags(this.mapgen))
+      : this.mapgen.startsWith('valleys') ? new VL.Model(this.seed32, VL.parseFlags(this.mapgen))
+      : this.mapgen.startsWith('carpathian') ? new CP.Model(this.seed32, CP.parseFlags(this.mapgen))
+      : this.mapgen === 'v5' ? new (isNode ? require('./v5.js') : root.LuantiV5).Model(this.seed32)
+      : new Model(this.seed32);
   }
 
   // Region containing a Luanti block position.
