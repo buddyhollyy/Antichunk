@@ -46,3 +46,23 @@ should be shared under GPL-3.0.
 ## Build
 
 index.html is built from the files in src/ and js/ by running node tools/build.js.
+
+## Why "Antichunk"
+
+The name is a nod to [Chunkbase](https://www.chunkbase.com/apps/seed-map), the seed
+map for Minecraft. Minecraft and Luanti cut their worlds into pieces in different ways:
+
+#### Lunanti: 
+* Luanti node: one 1 × 1 × 1 cube, the smallest piece of a Luanti world.
+* Luanti mapblock: a cube of 16 × 16 × 16 nodes. This is how the world is stored. Seen from above it has the same footprint as a Minecraft chunk, but it is only 16 nodes tall, so mapblocks stack on top of each other.
+* Luanti mapchunk: 5 × 5 × 5 mapblocks, so 80 × 80 × 80 nodes. The map generator builds the world one mapchunk at a time.
+
+#### Minecraft: 
+* Minecraft block: one 1 × 1 × 1 cube, like a Luanti node.
+* Minecraft section: 16 × 16 × 16 blocks, the same size as a mapblock.
+* Minecraft chunk: a column of 24 sections, 16 × 16 blocks wide and 384 blocks tall: the whole height of the world. The game generates, loads and saves the world one chunk at a time.
+
+Luanti itself has no Minecraft-style chunks, so a Luanti seed map is an "anti-chunk" map. (Mineclonia still uses a 16 × 16 grid for a few Minecraft features, such as slime chunks.)
+
+Here is a visual of Luanti node, mapblock and mapchunk next to Minecraft block, section and chunk, drawn to scale:
+![luanti_vs_minecraft](logo/luanti-vs-minecraft.svg)
