@@ -62,7 +62,7 @@ map for Minecraft. Minecraft and Luanti cut their worlds into pieces in differen
 * Minecraft section: 16 × 16 × 16 blocks, the same size as a mapblock.
 * Minecraft chunk: a column of 24 sections, 16 × 16 blocks wide and 384 blocks tall: the whole height of the world. The game generates, loads and saves the world one chunk at a time.
 
-Luanti itself has no Minecraft-style chunks, so a Luanti seed map is an "anti-chunk" map. (Mineclonia still uses a 16 × 16 grid for a few Minecraft features, such as slime chunks.)
+Luanti itself has no Minecraft-style chunks, so a Luanti seed map is an "anti-chunk" map.
 
 Here is a visual of Luanti node, mapblock and mapchunk next to Minecraft block, section and chunk, drawn to scale:
 ![luanti_vs_minecraft](logo/luanti-vs-minecraft.svg)
