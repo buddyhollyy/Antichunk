@@ -134,6 +134,14 @@
   .limit-label { display: block; margin-top: 6px; font-size: 12px; }
   #limit-form { margin-top: 3px; } #limit { width: 0; flex: 1; min-width: 0; padding: 4px 6px; } #limit-form button { padding: 4px 10px; flex: none; }
   #panel { overflow-x: hidden; }
+  .my-row { display: flex; gap: 6px; margin: 4px 0; } .my-row button { padding: 4px 10px; font-size: 12px; }
+  #my-help summary { cursor: pointer; font-size: 12px; margin-top: 4px; }
+  #my-help ol { margin: 4px 0; padding-left: 18px; font-size: 12px; } #my-help li { margin: 4px 0; }
+  #my-help select { font-size: 12px; padding: 2px 4px; } #my-copy { font-size: 12px; padding: 3px 8px; }
+  #my-path { display: block; margin-top: 3px; font-size: 11px; word-break: break-all; color: var(--muted); }
+  #body.drop-ok main::after { content: 'Drop map.sqlite to show your world'; position: absolute; inset: 8px; display: grid;
+    place-items: center; border: 2px dashed var(--accent, #8ab4f8); border-radius: 10px; background: rgba(20,22,26,0.6);
+    font-weight: 600; pointer-events: none; }
   #compass { position: absolute; right: 12px; bottom: 52px; width: 36px; height: 36px; pointer-events: none; }
   #compass svg { display: block; }
   #compass span { position: absolute; left: 0; right: 0; top: -15px; text-align: center; font-size: 12px; font-weight: 700;
@@ -221,6 +229,25 @@
   <div id="info" hidden aria-live="polite"></div>
 </main>
 <aside id="panel" aria-label="Map layers">
+  <section class="group" id="my-group">
+    <label class="check head"><input type="checkbox" id="show-my" checked disabled> Your world</label>
+    <p class="wp-empty" id="my-intro">Show what you have already explored and built, read from your world's map.sqlite file.<br><small style="opacity: 0.8;">The file stays on your computer. Nothing is uploaded.</small></p>
+    <div class="my-row"><button type="button" id="my-open" class="secondary">Open your world…</button><button type="button" id="my-remove" class="secondary" hidden>Remove</button></div>
+    <input type="file" id="my-file" accept=".sqlite" hidden>
+    <p class="wp-empty" id="my-status" aria-live="polite"></p>
+    <details id="my-help"><summary>How to find map.sqlite</summary>
+      <ol>
+        <li>Pick your computer: <select id="my-os" aria-label="Your computer">
+          <option value="win">Windows</option><option value="mac">Mac</option>
+          <option value="linux">Linux</option><option value="flatpak">Linux (Flatpak)</option></select></li>
+        <li><button type="button" id="my-copy" class="secondary">Copy folder path</button><code id="my-path"></code></li>
+        <li>Click “Open your world…”. In the window that opens, click the address bar at the top, paste, and press Enter.</li>
+        <li>Open the folder with your world's name and pick <b>map.sqlite</b>.</li>
+      </ol>
+      <p class="wp-empty" id="my-nobar"></p>
+      <p class="wp-empty">Close the world in Luanti first, so everything is saved. You can also drag map.sqlite onto the map.</p>
+    </details>
+  </section>
   <section class="group" id="wp-group"><label class="check head"><input type="checkbox" id="show-wp" checked> Waypoints</label><div id="wp-list"></div></section>
   <section class="group" data-dim="overworld"><label class="check head"><input type="checkbox" id="show-spawn" checked> Spawn</label><div class="types" data-group="spawn"></div></section>
   <section class="group" data-dim="overworld"><label class="check head"><input type="checkbox" id="show-villages" checked> Villages</label><div class="types" data-group="villages"></div></section>
@@ -248,7 +275,7 @@
   <section class="group" data-dim="end" hidden><label class="check head"><input type="checkbox" id="show-end" checked> End features</label><div class="types" data-group="end"></div></section>
 </aside>
 </div>
-<footer><a href="https://github.com/buddyhollyy/Antichunk" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline;">Antichunk 0.1.27</a> · Luanti v7, v5, Flat, Valleys and Carpathian map generators · <a href="#" id="about-link">About this map</a></footer>
+<footer><a href="https://github.com/buddyhollyy/Antichunk" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline;">Antichunk 0.1.29</a> · Luanti v7, v5, Flat, Valleys and Carpathian map generators · <a href="#" id="about-link">About this map</a></footer>
 
 <script type="text/plain" id="worker-src">
 /*@NOISE@*/
@@ -270,6 +297,11 @@
 /*@ICONJOBS@*/
 /*@SPAWN@*/
 /*@WORKER@*/
+</script>
+<script type="text/plain" id="import-worker-src">
+/*@NODECOLORS@*/
+/*@ZSTD@*/
+/*@WORLDIMPORT@*/
 </script>
 <script>
 /*@NOISE@*/

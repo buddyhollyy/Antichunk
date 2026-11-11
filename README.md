@@ -10,6 +10,7 @@ Minecraft.
 
 **Live demo: [buddyhollyy.github.io/Antichunk](https://buddyhollyy.github.io/Antichunk/)**
 
+
 ## How to open it
 
 Open `index.html` in a web browser (double-click it). It needs no server and
@@ -29,6 +30,29 @@ item (with a link to its Minecraft Wiki article), shows its position, how
 accurate that position is, and the `/locate` command to check it in game. At the
 bottom are buttons to copy locate and teleport commands to this item. 
 
+
+## Your own world
+
+Under "Your world" at the top of the layers panel, "Open your world…" reads
+a world's `map.sqlite` file and draws what you have really explored and
+built over the seed map: the top block of every explored spot in the
+Overworld and the End, colored from Mineclonia's textures. In the Nether it
+looks under the bedrock roof instead, so you may not see something you built.
+
+You can also drag the `map.sqlite` file onto the map. The file is read in your 
+browser and stays on your computer the entire time. It is never uploaded anywhere.
+
+Worlds are in these folders (from Luanti's own code):
+- Windows: `%APPDATA%\Minetest\worlds` (the portable .zip version keeps
+  them in its own folder)
+- Mac: `~/Library/Application Support/minetest/worlds`
+- Linux: `~/.minetest/worlds`
+- Linux, Flatpak: `~/.var/app/org.luanti.luanti/.minetest/worlds`
+
+Expand the "How to find map.sqlite" option in the panel and you will find a button 
+that copies the right folder path to paste into the file window's address bar.
+
+
 ## Accuracy
 
 The JavaScript output was checked against Luanti's own C++ noise code
@@ -44,15 +68,18 @@ Known limits:
 - It matches x86-64 builds of Luanti. Some ARM builds could round
   differently in rare cases.
 
+
 ## License
 
 The terrain and biome code is ported from Luanti (LGPL-2.1-or-later). The
 biome list comes from Mineclonia (GPL-3.0), so the finished page as a whole
 should be shared under GPL-3.0.
 
+
 ## Build
 
 index.html is built from the files in src/ and js/ by running node tools/build.js.
+
 
 ## Why "Antichunk"
 

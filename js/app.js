@@ -21,6 +21,8 @@
   // Edges of the Luanti world: X and Z run from -30912 to 30927 with the
   // default mapgen_limit of 31007 (docs.luanti.org, World Boundaries).  A
   // world made with a smaller mapgen_limit ends sooner; see setLimit().
+  // Flat color past the world's edge, in each dimension.
+  const PAST_EDGE = { overworld: '#3b3d42', nether: '#3a2422', end: '#16141d' };
   let mapgenLimit = 31007, WORLD_MIN = -30912, WORLD_MAX = 30927, PORTAL_EDGE = 30912;
   // Luanti's get_mapgen_edges (src/mapgen/mapgen.cpp) for chunksize 5:
   // only mapchunks wholly inside the limit are generated.
@@ -415,7 +417,10 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#1b1d22';
     ctx.fillRect(0, 0, w, h);
-    if (!seedText) { updateReadout(); return; }
+    if (!seedText) {
+      if (myAny()) { drawMyWorld(w, h); drawGrid(w, h, scale()); }
+      updateReadout(); return;
+    }
 
     const s = scale(), step = stepFor(s);
     const [x0, z1] = toWorld(0, 0), [x1, z0] = toWorld(w, h);
@@ -439,8 +444,12 @@
       ctx.drawImage(useB ? t.imgB : t.img, ...r);
       if (hlOn) { ctx.drawImage(maskFor(t), ...r); if (t.maskAny) hlSeen = true; }
     };
+    // Tiles wholly past the world's edge are not worked out at all: Luanti
+    // never generates anything there, and they would cost as much as any other.
+    const outside = (x, z, sp) => x > WORLD_MAX || z > WORLD_MAX || x + sp <= WORLD_MIN || z + sp <= WORLD_MIN;
     for (let cz = cz0; cz <= cz1; cz += span) {
       for (let cx = cx0; cx <= cx1; cx += span) {
+        if (outside(cx, cz, span)) continue;
         const k = key(step, cx, cz);
         const t = cache.get(k);
         if (t) { put(t, cx, cz, span); continue; }
@@ -465,7 +474,7 @@
         // Nothing coarser is loaded yet: also ask for the tiles one zoom level
         // coarser.  They cost far less, so the screen fills in quickly with a
         // rough picture that the sharp tiles then replace.
-        if (coarser(step)) each(coarser(step), (kk) => { if (!preview.has(kk) && !cache.has(kk)) { preview.add(kk); wanted.push(kk); } });
+        if (coarser(step)) each(coarser(step), (kk, x, z, sp) => { if (!outside(x, z, sp) && !preview.has(kk) && !cache.has(kk)) { preview.add(kk); wanted.push(kk); } });
         for (const st of finer(step)) each(st, (kk, x, z, sp) => { const c = cache.get(kk); if (c) put(c, x, z, sp); });
       }
     }
@@ -474,8 +483,16 @@
     const viewKey = dim + ':' + generation + ':' + view.zi + ':' + cx0 + ':' + cx1 + ':' + cz0 + ':' + cz1;
     visibleCount = ((cx1 - cx0) / span + 1) * ((cz1 - cz0) / span + 1);
     if (viewKey !== lastViewKey) { lastViewKey = viewKey; planAhead(step, x0, x1, z0, z1); schedule(wanted); }
-    // Outline the world's edge.  The terrain past it is still drawn (what
-    // the noise would give there), though nothing is ever built there.
+    // Past the edge: one flat color in each dimension.
+    {
+      const [ex0, ez1] = toScreen(WORLD_MIN, WORLD_MAX + 1), [ex1, ez0] = toScreen(WORLD_MAX + 1, WORLD_MIN);
+      if (ex0 > 0 || ex1 < w || ez1 > 0 || ez0 < h) {
+        ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.rect(ex0, ez1, ex1 - ex0, ez0 - ez1);
+        ctx.fillStyle = PAST_EDGE[dim]; ctx.fill('evenodd');
+      }
+    }
+    drawMyWorld(w, h);
+    // Outline the world's edge.
     {
       const [ex0, ez1] = toScreen(WORLD_MIN, WORLD_MAX + 1), [ex1, ez0] = toScreen(WORLD_MAX + 1, WORLD_MIN);
       if (ex0 > -2 || ex1 < w + 2 || ez1 > -2 || ez0 < h + 2) {
@@ -557,7 +574,7 @@
     const add = (st, ax0, ax1, az0, az1, list) => {
       const sp = tileSpan(st);
       for (let z = tileOrigin(az0, st); z <= az1; z += sp) for (let x = tileOrigin(ax0, st); x <= ax1; x += sp) {
-        if (x > WORLD_MAX + sp || z > WORLD_MAX + sp || x + sp < WORLD_MIN - sp || z + sp < WORLD_MIN - sp) continue;
+        if (x > WORLD_MAX || z > WORLD_MAX || x + sp <= WORLD_MIN || z + sp <= WORLD_MIN) continue;   // past the edge
         list.push([key(st, x, z), Math.hypot(x + sp / 2 - cxm, z + sp / 2 - czm)]);
       }
     };
@@ -630,9 +647,15 @@
 
   // ------------------------------------------------------------ readout
   function updateReadout() {
-    if (!mouse || !seedText) { readout.textContent = ''; return; }
+    if (!mouse || (!seedText && !myAny())) { readout.textContent = ''; return; }
     const [wx, wz] = toWorld(mouse[0], mouse[1]);
     const x = Math.floor(wx), z = Math.floor(wz);
+    const myY = myHeightAt(x, z);
+    const myText = myY === null ? '' : '   •   your world: ' + (dim === 'nether' ? 'ground Y ' : 'top block Y ') + myY;
+    if (!seedText) {
+      readout.textContent = 'X ' + x + '   Z ' + z + myText;
+      return;
+    }
     const at = sampleAt(x, z);
     let text = 'X ' + x + '   Z ' + z;
     if (dim === 'end') {
@@ -641,6 +664,7 @@
         text += '   ' + (y === -32768 ? 'void' : (at.st === 1 ? 'top block Y ' : 'top block Y ≈ ') + y) +
           '   ' + ['main island area', 'inner ring of islands', 'outer islands'][at.t.biome[at.idx]];
       }
+      text += myText;
       const o = endNear(mouse[0], mouse[1]);
       if (o) text += '   •   ' + endTitle(o) + ' at X ' + o.x + (o.y === null ? '' : ', Y ' + o.y) + ', Z ' + o.z;
       readout.textContent = text;
@@ -649,6 +673,7 @@
     if (dim === 'nether') {
       text += '   (overworld X ' + x * 8 + ', Z ' + z * 8 + ')';
       if (at) text += '   ' + NETHER_LABEL[window.LuantiBiomes.BIOMES[at.t.biome[at.idx]].name];
+      text += myText;
       const o = netherNear(mouse[0], mouse[1]);
       if (o) text += '   •   ' + (o.giant ? 'Large ruined portal' : NETHER_KIND[o.kind]) +
         (o.kind === 'nether_portal' ? '' : ' (' + (o.kind === 'fortress' ? 'starting chunk' : 'starting room') + ')') + ' at X ' + o.x + (o.y === null ? '' : ', Y ' + o.y) + ', Z ' + o.z;
@@ -661,6 +686,7 @@
       text += '   ' + (at.st === 1 ? 'top block Y ' : 'top block Y ≈ ') + y + (at.t.water[at.idx] ? ' (under water)' : '');
       text += '   ' + biomeLabel(window.LuantiBiomes.BIOMES[at.t.biome[at.idx]].name);
     }
+    text += myText;
     const v = villageNear(mouse[0], mouse[1]);
     if (v) {
       text += '   •   ' + (v.zombie ? 'Abandoned ' : '') + VILLAGE_LABEL[v.type] + ' village at X ' + v.x + ', Z ' + v.z;
@@ -1669,9 +1695,8 @@
       '<ul>' +
       '<li>Under <b>Mapgen</b>, pick the map generator the world uses: v7, v5, Flat, Valleys or Carpathian.</li>' +
       '<li>For Flat and Carpathian, pick the options the world was made with (Lakes, Hills, Rivers).</li>' +
-      '<li>Valleys\' four options are under "World settings" at the bottom of the layers panel.</li>' +
+      '<li>The Valleys mapgen has four extra options. You\'ll find them under "World settings" at the bottom of the layers panel.</li>' +
       '<li>If the world was made with a smaller <code>mapgen_limit</code>, it ends sooner. Set it under "World settings" too.</li>' +
-      '<li>All other world settings are assumed to be the defaults.</li>' +
       '</ul>' +
 
       '<h4>What the map shows</h4>' +
@@ -1680,7 +1705,7 @@
       '<li>Villages (a red outline marks an abandoned one), ruined portals, temples (desert pyramids, jungle temples, igloos, ' +
       'swamp huts), ocean structures (shipwrecks, ocean ruins, monuments), woodland mansions, pillager outposts, trail ruins, ' +
       'trial chambers, buried treasure, mineshafts and strongholds, placed the way Mineclonia places them.</li>' +
-      '<li>The spawn point: new players appear inside the dashed square around the star.</li>' +
+      '<li>The spawn point: new players show up somewhere around the star, inside the dashed square.</li>' +
       '<li>Caves are not shown.</li>' +
       '</ul>' +
 
@@ -1695,7 +1720,7 @@
       '</ul>' +
 
       '<p class="about-foot about-rule"><a class="gh-link" href="' + (PROJECT_URL || '#') + '"' + (PROJECT_URL ? ' target="_blank" rel="noopener"' : '') +
-      ' title="Antichunk on GitHub">' + GITHUB_MARK + 'Antichunk 0.1.27, crafted by buddyholly</a><br>' +
+      ' title="Antichunk on GitHub">' + GITHUB_MARK + 'Antichunk 0.1.29, crafted by buddyholly</a><br>' +
       'Antichunk is free software under the GPL-3.0 license.<br>' +
       'Live map: ' + ext('https://buddyhollyy.github.io/Antichunk/', 'buddyhollyy.github.io/Antichunk') + '</p>';
     info.hidden = false;
@@ -2752,6 +2777,187 @@
       setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     }, 'image/png');
   });
+
+  // ------------------------------------------------------------ your world
+  // A player's own saved world (map.sqlite), read by worldimport.js in a
+  // worker and drawn over the generated map: the top node of every
+  // explored column (in the Nether, the ground under the roof), as
+  // 256 x 256 node tiles, one set per dimension.  Nothing leaves the computer.
+  const myEmpty = () => ({ overworld: new Map(), nether: new Map(), end: new Map() });
+  const my = { dims: myEmpty(), worker: null, on: true, file: '' };
+  const myTiles = (d) => my.dims[d || dim];
+  const myAny = () => Object.values(my.dims).some((m) => m.size > 0);
+  function myClear() {
+    for (const m of Object.values(my.dims)) for (const t of m.values()) if (t.bmp && t.bmp.close) t.bmp.close();
+    my.dims = myEmpty();
+  }
+  const MY_T = 256;
+  const myOpen = document.getElementById('my-open'), myFile = document.getElementById('my-file');
+  const myRemove = document.getElementById('my-remove'), myStatus = document.getElementById('my-status');
+  const myShow = document.getElementById('show-my'), myOs = document.getElementById('my-os');
+  const myPath = document.getElementById('my-path'), myCopy = document.getElementById('my-copy');
+  const myNoBar = document.getElementById('my-nobar');
+  // Where Luanti keeps worlds (src/porting.cpp, setSystemPaths): the user
+  // folder is %APPDATA%\Minetest on Windows, ~/Library/Application
+  // Support/minetest on Mac and ~/.minetest on Linux; the Flathub package
+  // sets it to ~/.var/app/org.luanti.luanti/.minetest.  Worlds are in its
+  // worlds folder.
+  const MY_PATHS = {
+    win: '%APPDATA%\\Minetest\\worlds',
+    mac: '~/Library/Application Support/minetest/worlds',
+    linux: '~/.minetest/worlds',
+    flatpak: '~/.var/app/org.luanti.luanti/.minetest/worlds',
+  };
+  const MY_NOBAR = {
+    win: 'Using the portable .zip version of Luanti? Then the worlds folder is inside the Luanti folder itself.',
+    mac: 'No address bar? Press Command+Shift+G and paste the path there.',
+    linux: 'No address bar? Press Ctrl+L and paste the path there.',
+    flatpak: 'No address bar? Press Ctrl+L and paste the path there.',
+  };
+  function myGuessOs() {
+    const p = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || '').toLowerCase();
+    return /win/.test(p) ? 'win' : /mac/.test(p) ? 'mac' : 'linux';
+  }
+  function myShowPath() { myPath.textContent = MY_PATHS[myOs.value]; myNoBar.textContent = MY_NOBAR[myOs.value]; }
+  myOs.value = myGuessOs();
+  myShowPath();
+  myOs.addEventListener('change', myShowPath);
+  myCopy.addEventListener('click', async () => {
+    const text = MY_PATHS[myOs.value];
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (e) { /* not allowed here */ }
+    if (!ok) {
+      // Older way, for pages opened from a file.
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      ta.remove();
+    }
+    myCopy.textContent = ok ? 'Copied!' : 'Select the path below and copy it';
+    setTimeout(() => { myCopy.textContent = 'Copy folder path'; }, 2500);
+  });
+  myOpen.addEventListener('click', () => myFile.click());
+  myFile.addEventListener('change', () => { if (myFile.files[0]) myLoad(myFile.files[0]); myFile.value = ''; });
+  myShow.addEventListener('change', () => { my.on = myShow.checked; requestDraw(); });
+  // On switching dimension, show its explored part if none of it is on screen.
+  for (const r of document.querySelectorAll('input[name=dim]')) {
+    r.addEventListener('change', () => { if (r.checked && my.on && myTiles().size) { myCenter(); requestDraw(); } });
+  }
+  myRemove.addEventListener('click', () => {
+    if (my.worker) { my.worker.terminate(); my.worker = null; }
+    myClear();
+    myRemove.hidden = true; myShow.disabled = true; myOpen.textContent = 'Open your world…';
+    myStatus.textContent = '';
+    if (!seedText) document.getElementById('empty').hidden = false;
+    requestDraw();
+  });
+  // Drag and drop a file onto the map.
+  const bodyEl = document.getElementById('body');
+  let dragDepth = 0;
+  const hasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+  bodyEl.addEventListener('dragenter', (e) => { if (hasFiles(e)) { dragDepth++; bodyEl.classList.add('drop-ok'); e.preventDefault(); } });
+  bodyEl.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+  bodyEl.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; bodyEl.classList.remove('drop-ok'); } });
+  bodyEl.addEventListener('drop', (e) => {
+    dragDepth = 0; bodyEl.classList.remove('drop-ok');
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (f) myLoad(f);
+  });
+  const MY_ERRORS = {
+    'not-sqlite': 'That file is not a Luanti map. Pick the file called map.sqlite inside your world’s folder.',
+    'no-blocks': 'That file has no map in it. Pick the file called map.sqlite (not players.sqlite or auth.sqlite).',
+  };
+  function myLoad(file) {
+    if (my.worker) my.worker.terminate();
+    myClear();
+    myOpen.disabled = true;
+    myStatus.textContent = 'Opening ' + file.name + '…';
+    const started = performance.now();
+    const w = new Worker(URL.createObjectURL(new Blob([document.getElementById('import-worker-src').textContent], { type: 'text/javascript' })));
+    my.worker = w;
+    const pending = [];
+    w.onerror = (e) => { myStatus.textContent = 'Could not read the file: ' + (e.message || 'unknown error'); myOpen.disabled = false; };
+    w.onmessage = (e) => {
+      const d = e.data;
+      if (w !== my.worker) return;
+      if (d.type === 'progress') {
+        myStatus.textContent = d.phase + '… ' + Math.round(d.frac * 100) + '%';
+      } else if (d.type === 'tile') {
+        const t = { tx: d.tx, tz: d.tz, heights: new Int16Array(d.heights), bmp: null };
+        my.dims[d.dim].set(d.tx + ',' + d.tz, t);
+        const img = new ImageData(new Uint8ClampedArray(d.rgba), MY_T, MY_T);
+        if (window.createImageBitmap) {
+          pending.push(createImageBitmap(img).then((b) => { t.bmp = b; }, () => { t.bmp = myCanvas(img); }));
+        } else t.bmp = myCanvas(img);
+      } else if (d.type === 'error') {
+        myStatus.textContent = MY_ERRORS[d.code] || ('Could not read the file (' + d.code + ').');
+        myOpen.disabled = false; w.terminate(); my.worker = null;
+      } else if (d.type === 'done') {
+        w.terminate(); my.worker = null;
+        Promise.all(pending).then(() => {
+          myOpen.disabled = false; myOpen.textContent = 'Open another…';
+          myRemove.hidden = false; myShow.disabled = false; myShow.checked = true; my.on = true;
+          my.file = file.name;
+          if (!myAny()) { myStatus.textContent = 'No explored places found in this file.'; return; }
+          const secs = ((performance.now() - started) / 1000).toFixed(1);
+          const parts = [['overworld', 'Overworld'], ['nether', 'Nether'], ['end', 'End']]
+            .filter(([k]) => my.dims[k].size).map(([k, l]) => l + ' ' + d.counts[k].toLocaleString('en-US'));
+          let note = 'Showing your world. Saved mapblocks: ' + parts.join(', ') + ' (read in ' + secs + ' s).';
+          if (d.oldFormat) note += ' ' + d.oldFormat.toLocaleString('en-US') + ' mapblocks saved by Luanti older than 5.5 are not shown yet; visiting them in game updates them.';
+          if (d.badBlocks) note += ' ' + d.badBlocks.toLocaleString('en-US') + ' damaged mapblocks were skipped.';
+          myStatus.textContent = note;
+          document.getElementById('empty').hidden = true;
+          // Stay in this dimension if it has explored places, else go to one that does.
+          if (!myTiles().size) setDim(['overworld', 'nether', 'end'].find((k) => my.dims[k].size));
+          myCenter();
+          requestDraw();
+        });
+      }
+    };
+    w.postMessage({ file });
+  }
+  function myCanvas(img) {
+    const c = document.createElement('canvas'); c.width = MY_T; c.height = MY_T;
+    c.getContext('2d').putImageData(img, 0, 0);
+    return c;
+  }
+  // Unless part of the world is already on screen, go to the middle of it:
+  // the median tile, so a far-off trip does not pull the view into the
+  // empty space between.
+  function myCenter() {
+    const { w, h } = size();
+    const [x0, z1] = toWorld(0, 0), [x1, z0] = toWorld(w, h);
+    const list = [...myTiles().values()];
+    if (!list.length) return;
+    if (list.some((t) => t.tx * MY_T < x1 && (t.tx + 1) * MY_T > x0 && t.tz * MY_T < z1 && (t.tz + 1) * MY_T > z0)) return;
+    const xs = list.map((t) => t.tx).sort((a, b) => a - b), zs = list.map((t) => t.tz).sort((a, b) => a - b);
+    view.x = (xs[xs.length >> 1] + 0.5) * MY_T; view.z = (zs[zs.length >> 1] + 0.5) * MY_T;
+    saveHash();
+  }
+  function drawMyWorld(w, h) {
+    if (!my.on || !myTiles().size) return;
+    const s = scale();
+    ctx.imageSmoothingEnabled = s < 1;
+    const [x0, z1] = toWorld(0, 0), [x1, z0] = toWorld(w, h);
+    for (const t of myTiles().values()) {
+      if (!t.bmp) continue;
+      const X = t.tx * MY_T, Z = t.tz * MY_T;
+      if (X > x1 || X + MY_T < x0 || Z > z1 || Z + MY_T < z0) continue;
+      const [sx, sy] = toScreen(X, Z + MY_T);
+      ctx.drawImage(t.bmp, sx, sy, MY_T * s, MY_T * s);
+    }
+    ctx.imageSmoothingEnabled = false;
+  }
+  // Top node height of the saved world at (x, z) in this dimension (in
+  // the Nether, the ground under the roof), or null if not explored.
+  function myHeightAt(x, z) {
+    if (!my.on || !myTiles().size) return null;
+    const tx = Math.floor(x / MY_T), tz = Math.floor(z / MY_T), t = myTiles().get(tx + ',' + tz);
+    if (!t) return null;
+    const y = t.heights[(z - tz * MY_T) * MY_T + (x - tx * MY_T)];
+    return y === -32768 ? null : y;
+  }
 
   // ------------------------------------------------------------ recent seeds
   const SEEDS_KEY = 'antichunk-seeds';

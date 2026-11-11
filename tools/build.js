@@ -30,6 +30,9 @@ const parts = {
   NETHER: read('js/nether.js'),
   END: read('js/end.js'),
   ICONJOBS: read('js/iconjobs.js'),
+  NODECOLORS: read('js/node-colors.js'),
+  ZSTD: read('js/zstd-wasm.js'),
+  WORLDIMPORT: read('js/worldimport.js'),
   FAVICON: 'data:image/x-icon;base64,' + fs.readFileSync(path.join(root, 'logo/favicon.ico')).toString('base64'),
   LOGO: read('logo/lockup.svg').replace(/ width="\d+" height="\d+"/, '').replace(/ xmlns:c2pa="[^"]*"/, '').trim(),
 };
