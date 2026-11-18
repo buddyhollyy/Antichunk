@@ -2784,7 +2784,7 @@
   // explored column (in the Nether, the ground under the roof), as
   // 256 x 256 node tiles, one set per dimension.  Nothing leaves the computer.
   const myEmpty = () => ({ overworld: new Map(), nether: new Map(), end: new Map() });
-  const my = { dims: myEmpty(), worker: null, on: true, file: '' };
+  const my = { dims: myEmpty(), worker: null, on: true, file: '', server: false };
   const myTiles = (d) => my.dims[d || dim];
   const myAny = () => Object.values(my.dims).some((m) => m.size > 0);
   function myClear() {
@@ -2797,6 +2797,7 @@
   const myShow = document.getElementById('show-my'), myOs = document.getElementById('my-os');
   const myPath = document.getElementById('my-path'), myCopy = document.getElementById('my-copy');
   const myNoBar = document.getElementById('my-nobar');
+  const myRefresh = document.getElementById('my-refresh');
   // Where Luanti keeps worlds (src/porting.cpp, setSystemPaths): the user
   // folder is %APPDATA%\Minetest on Windows, ~/Library/Application
   // Support/minetest on Mac and ~/.minetest on Linux; the Flathub package
@@ -2844,7 +2845,7 @@
   }
   myRemove.addEventListener('click', () => {
     if (my.worker) { my.worker.terminate(); my.worker = null; }
-    myClear();
+    myClear(); my.server = false; myRefresh.hidden = true;
     myRemove.hidden = true; myShow.disabled = true; myOpen.textContent = 'Open your world…';
     myStatus.textContent = '';
     if (!seedText) document.getElementById('empty').hidden = false;
@@ -2868,36 +2869,52 @@
     'not-sqlite': 'That file is not a Luanti map. Pick the file called map.sqlite inside your world’s folder.',
     'no-blocks': 'That file has no map in it. Pick the file called map.sqlite (not players.sqlite or auth.sqlite).',
   };
-  function myLoad(file) {
+  // refresh: re-reading the served world.  The map on screen stays as it is
+  // until the new copy has been read in full, the view does not move, and a
+  // copy that cannot be read (caught while the server was saving) is dropped.
+  function myLoad(file, refresh) {
     if (my.worker) my.worker.terminate();
-    myClear();
-    myOpen.disabled = true;
-    myStatus.textContent = 'Opening ' + file.name + '…';
+    if (!refresh) { myClear(); my.server = false; myRefresh.hidden = true; }
+    const dims = refresh ? myEmpty() : my.dims;
+    const oldStatus = myStatus.textContent.replace(/ \(Refresh missed.*$/, '');
+    myOpen.disabled = true; myRefresh.disabled = true;
+    myStatus.textContent = (refresh ? 'Refreshing ' : 'Opening ') + file.name + '…';
     const started = performance.now();
     const w = new Worker(URL.createObjectURL(new Blob([document.getElementById('import-worker-src').textContent], { type: 'text/javascript' })));
     my.worker = w;
     const pending = [];
-    w.onerror = (e) => { myStatus.textContent = 'Could not read the file: ' + (e.message || 'unknown error'); myOpen.disabled = false; };
+    const failed = (text) => {
+      myOpen.disabled = false; myRefresh.disabled = false;
+      if (refresh) { for (const m of Object.values(dims)) for (const t of m.values()) if (t.bmp && t.bmp.close) t.bmp.close(); }
+      myStatus.textContent = refresh ? oldStatus + ' (Refresh missed, trying again later.)' : text;
+    };
+    w.onerror = (e) => { failed('Could not read the file: ' + (e.message || 'unknown error')); if (my.worker === w) my.worker = null; };
     w.onmessage = (e) => {
       const d = e.data;
       if (w !== my.worker) return;
       if (d.type === 'progress') {
+        if (refresh) return;
         myStatus.textContent = d.phase + '… ' + Math.round(d.frac * 100) + '%';
       } else if (d.type === 'tile') {
         const t = { tx: d.tx, tz: d.tz, heights: new Int16Array(d.heights), bmp: null };
-        my.dims[d.dim].set(d.tx + ',' + d.tz, t);
+        dims[d.dim].set(d.tx + ',' + d.tz, t);
         const img = new ImageData(new Uint8ClampedArray(d.rgba), MY_T, MY_T);
         if (window.createImageBitmap) {
           pending.push(createImageBitmap(img).then((b) => { t.bmp = b; }, () => { t.bmp = myCanvas(img); }));
         } else t.bmp = myCanvas(img);
       } else if (d.type === 'error') {
-        myStatus.textContent = MY_ERRORS[d.code] || ('Could not read the file (' + d.code + ').');
-        myOpen.disabled = false; w.terminate(); my.worker = null;
+        failed(MY_ERRORS[d.code] || ('Could not read the file (' + d.code + ').'));
+        w.terminate(); my.worker = null;
       } else if (d.type === 'done') {
         w.terminate(); my.worker = null;
         Promise.all(pending).then(() => {
-          myOpen.disabled = false; myOpen.textContent = 'Open another…';
-          myRemove.hidden = false; myShow.disabled = false; myShow.checked = true; my.on = true;
+          if (refresh) {
+            if (!Object.values(dims).some((m) => m.size > 0)) { failed(''); return; }
+            myClear(); my.dims = dims;
+          }
+          myOpen.disabled = false; myRefresh.disabled = false; myOpen.textContent = 'Open another…';
+          myRemove.hidden = false; myShow.disabled = false;
+          if (!refresh) { myShow.checked = true; my.on = true; }
           my.file = file.name;
           if (!myAny()) { myStatus.textContent = 'No explored places found in this file.'; return; }
           const secs = ((performance.now() - started) / 1000).toFixed(1);
@@ -2906,7 +2923,9 @@
           let note = 'Showing your world. Saved mapblocks: ' + parts.join(', ') + ' (read in ' + secs + ' s).';
           if (d.oldFormat) note += ' ' + d.oldFormat.toLocaleString('en-US') + ' mapblocks saved by Luanti older than 5.5 are not shown yet; visiting them in game updates them.';
           if (d.badBlocks) note += ' ' + d.badBlocks.toLocaleString('en-US') + ' damaged mapblocks were skipped.';
+          if (my.server || refresh) note += ' Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '.';
           myStatus.textContent = note;
+          if (refresh) { requestDraw(); return; }
           document.getElementById('empty').hidden = true;
           // Stay in this dimension if it has explored places, else go to one that does.
           if (!myTiles().size) setDim(['overworld', 'nether', 'end'].find((k) => my.dims[k].size));
@@ -3051,12 +3070,38 @@
       seedInput.value = seedLine[1];
       setSeed(seedLine[1]);
     }
+    serverMap(false);
+  }
+  // The served map.sqlite is the live server's, so it grows as people play.
+  // It is read again every SERVER_EVERY ms while the page is in view, when
+  // Refresh is pressed, and on coming back to the tab after a while; a
+  // quick HEAD request first skips the download when nothing has changed.
+  const SERVER_EVERY = 2 * 60 * 1000;
+  let serverStamp = '', serverChecked = 0;
+  const stampOf = (r) => (r.headers.get('last-modified') || '') + '|' + (r.headers.get('content-length') || '');
+  async function serverMap(refresh) {
+    if (refresh && (!my.server || my.worker)) return;
+    serverChecked = Date.now();
     try {
+      if (refresh) {
+        const h = await fetch('world/map.sqlite', { method: 'HEAD', cache: 'no-store' });
+        if (h.ok && stampOf(h) === serverStamp) return;
+      }
       const r = await fetch('world/map.sqlite', { cache: 'no-store' });
       if (!r.ok) return;
-      myLoad(new File([await r.blob()], 'map.sqlite'));
-    } catch (e) { /* the seed map is still there to look at */ }
+      const stamp = stampOf(r);
+      const blob = await r.blob();
+      if (refresh && (!my.server || my.worker)) return;
+      serverStamp = stamp;
+      myLoad(new File([blob], 'map.sqlite'), refresh);
+      if (!refresh) { my.server = true; myRefresh.hidden = false; }
+    } catch (e) { /* the seed map, or the last good copy, is still there to look at */ }
   }
+  myRefresh.addEventListener('click', () => { serverStamp = ''; serverMap(true); });
+  setInterval(() => { if (document.visibilityState === 'visible') serverMap(true); }, SERVER_EVERY);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Date.now() - serverChecked > SERVER_EVERY) serverMap(true);
+  });
 
   fillHighlight();
   fillRecent(recentSeeds());
