@@ -3023,9 +3023,45 @@
     if (sel.length === 3 && p.has('seed')) pendingSel = { group: sel[0], x: Number(sel[1]), z: Number(sel[2]) };
   }
 
+  // ------------------------------------------------------------ server world
+  // When this page is served next to a Luanti world (the web server serves
+  // the world's folder as world/ beside index.html), open that world with
+  // nothing to type: the seed and the map generator come from the world's
+  // own map_meta.txt, and its saved map.sqlite is drawn over the seed map.
+  // Where no world is served (the copy on GitHub Pages, or index.html
+  // opened straight from disk) the first fetch fails and the page stays
+  // exactly as it is now.
+  async function loadServerWorld() {
+    let meta;
+    try {
+      const r = await fetch('world/map_meta.txt', { cache: 'no-store' });
+      if (!r.ok) return;
+      meta = await r.text();
+    } catch (e) { return; }
+    // A link that carries its own seed wins, so a shared view opens as sent.
+    const sent = new URLSearchParams(location.hash.slice(1)).has('seed');
+    const seedLine = /^seed\s*=\s*(-?\d+)\s*$/m.exec(meta);
+    if (!sent && seedLine) {
+      // Only the plain mapgen names; Flat's lakes and hills and Valleys'
+      // own options are still picked by hand on the page.
+      const name = /^mg_name\s*=\s*(\S+)\s*$/m.exec(meta);
+      if (name && ['v7', 'v5', 'flat', 'valleys', 'carpathian'].indexOf(name[1]) !== -1) applyMapgen(name[1]);
+      const lim = /^mapgen_limit\s*=\s*(\d+)\s*$/m.exec(meta);
+      if (lim) { applyLimit(Number(lim[1])); limitFromHash = true; }
+      seedInput.value = seedLine[1];
+      setSeed(seedLine[1]);
+    }
+    try {
+      const r = await fetch('world/map.sqlite', { cache: 'no-store' });
+      if (!r.ok) return;
+      myLoad(new File([await r.blob()], 'map.sqlite'));
+    } catch (e) { /* the seed map is still there to look at */ }
+  }
+
   fillHighlight();
   fillRecent(recentSeeds());
   renderWaypoints();
   loadHash();
   requestDraw();
+  loadServerWorld();
 })();
